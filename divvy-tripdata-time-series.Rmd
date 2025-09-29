@@ -72,6 +72,9 @@ library(data.table)
 
 Divvy, Chicago’s bike-sharing service, faces fluctuating demand for rides across days, weeks, and seasons. These fluctuations impact bike availability, station balancing, and operational efficiency. Accurately forecasting ride demand is essential for ensuring bikes and docks are available when and where riders need them. The business objective is to develop a time series forecasting model that predicts short-term and long-term ride demand, helping Divvy optimize resource allocation, reduce service disruptions, and improve customer satisfaction.
 
+### Problem statement
+Divvy, Chicago’s bike-sharing system, faces dynamic demand patterns that vary by season, day of the week, and rider type. These fluctuations often lead to bike shortages at high-demand stations and surpluses at others, reducing customer satisfaction and increasing operational costs. To address this, Divvy requires accurate forecasts of daily ride demand. Predicting demand trends will enable better resource allocation, efficient bike redistribution, and targeted marketing campaigns, ensuring improved rider experience and sustainable system operations.
+
 ## Data Understanding
 
 The dataset consists of Divvy trip data from **January 2024 to the present**, including ride start/end times, station information, user type (member vs. casual), and trip durations. Since rides are timestamped, the dataset supports the creation of aggregated time series (e.g., daily, weekly, or monthly ride counts). Additional contextual data such as **weather conditions, holidays, and day-of-week effects** can be integrated to better capture external influences on demand.
