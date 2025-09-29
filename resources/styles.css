@@ -1,0 +1,15 @@
+#TOC{
+  max-width: 18.75em;
+}
+
+h2{
+  padding: 5px 0px;
+	background-image: linear-gradient(to left, #005E8A, #1b1b1b);
+	border-bottom: 2px solid #005E8A;
+}
+
+.title{
+  padding: 10px 0px;
+	background-image: linear-gradient(to right, #1b1b1b, #005E8A);
+	border-bottom: 5px solid #005E8A;
+}

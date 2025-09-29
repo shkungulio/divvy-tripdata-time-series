@@ -1,0 +1,103 @@
+---
+title: "Divvy Time Series Analysis"
+output:
+  html_document:
+    theme:
+      bg: "#1b1b1b"
+      fg: "#FDF7F7" 
+      primary: "#005E8A"
+      base_font:
+        google: Montserrat
+      code_font:
+        google: JetBrains Mono
+    highlight: espresso
+    code-download: yes
+    css: "resources/styles.css"
+    toc: true
+    toc_depth: 4
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 10, fig.height = 6
+                      )
+
+#Install the following libraries if required
+if(!requireNamespace("tidyverse", quietly = TRUE)){
+  # If not installed, then install it
+  install.packages("tidyverse")
+}
+if(!requireNamespace("skimr", quietly = TRUE)){
+  # If not installed, then install it
+  install.packages("skimr")
+}
+if(!requireNamespace("ini", quietly = TRUE)){
+  # If not installed, then install it
+  install.packages("ini")
+}
+if(!requireNamespace("RPostgres", quietly = TRUE)){
+  # If not installed, then install it
+  install.packages("RPostgres")
+}
+if(!requireNamespace("dotenv", quietly = TRUE)){
+  # If not installed, then install it
+  install.packages("dotenv")
+}
+if(!requireNamespace("glue", quietly = TRUE)){
+  # If not installed, then install it
+  install.packages("glue")
+}
+
+# Install necessary libraries
+library(dotenv)
+library(RPostgres)
+library(ini)
+library(tidyverse)
+library(skimr)
+library(glue)
+library(readr)
+library(glue)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(data.table)
+```
+
+<br>
+
+## Business Understanding
+
+Divvy, Chicago’s bike-sharing service, faces fluctuating demand for rides across days, weeks, and seasons. These fluctuations impact bike availability, station balancing, and operational efficiency. Accurately forecasting ride demand is essential for ensuring bikes and docks are available when and where riders need them. The business objective is to develop a time series forecasting model that predicts short-term and long-term ride demand, helping Divvy optimize resource allocation, reduce service disruptions, and improve customer satisfaction.
+
+## Data Understanding
+
+The dataset consists of Divvy trip data from **January 2024 to the present**, including ride start/end times, station information, user type (member vs. casual), and trip durations. Since rides are timestamped, the dataset supports the creation of aggregated time series (e.g., daily, weekly, or monthly ride counts). Additional contextual data such as **weather conditions, holidays, and day-of-week effects** can be integrated to better capture external influences on demand.
+
+## Data Preparation
+
+Data will be aggregated into time series at different granularities:
+
+* **System-wide ride counts per day/week**
+* **Station-level ride counts**
+* **Ride counts segmented by user type (casual vs. member)**
+
+Missing values, anomalies (e.g., extremely short or long rides), and seasonal events will be identified and handled. Features such as lagged variables, rolling averages, and holiday/weekend indicators will be engineered to strengthen predictive modeling.
+
+## Modeling
+
+Time series forecasting methods such as **ARIMA/SARIMA, Exponential Smoothing (ETS), and Prophet** will be applied to capture trend, seasonality, and holiday effects. Advanced models such as **LSTM/GRU recurrent neural networks** may be explored for capturing non-linear temporal dependencies. Models will be trained and validated using rolling-window or walk-forward validation to mimic real-world forecasting scenarios.
+
+## Evaluation
+
+Models will be evaluated on accuracy metrics including **RMSE (Root Mean Squared Error), MAE (Mean Absolute Error), and MAPE (Mean Absolute Percentage Error)**. Forecast interpretability (e.g., identifying seasonal effects, day-of-week patterns) will also be considered to ensure insights are actionable for Divvy’s operations and marketing teams.
+
+## Deployment
+
+The final forecasting model will be designed to generate **regular demand forecasts** (daily or weekly). Forecast outputs can be integrated into Divvy’s decision-making process for:
+
+* **Station rebalancing and bike redistribution planning**
+* **Staff scheduling and resource allocation**
+* **Targeted promotions/marketing campaigns (e.g., weekends, holidays)**
