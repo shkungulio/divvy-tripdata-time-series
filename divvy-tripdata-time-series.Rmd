@@ -1,5 +1,5 @@
 ---
-title: "Divvy Time Series Analysis"
+title: "Divvy Tripdata Time-Series Analysis"
 output:
   html_document:
     theme:
@@ -34,36 +34,19 @@ if(!requireNamespace("skimr", quietly = TRUE)){
   # If not installed, then install it
   install.packages("skimr")
 }
-if(!requireNamespace("ini", quietly = TRUE)){
-  # If not installed, then install it
-  install.packages("ini")
-}
-if(!requireNamespace("RPostgres", quietly = TRUE)){
-  # If not installed, then install it
-  install.packages("RPostgres")
-}
-if(!requireNamespace("dotenv", quietly = TRUE)){
-  # If not installed, then install it
-  install.packages("dotenv")
-}
 if(!requireNamespace("glue", quietly = TRUE)){
   # If not installed, then install it
   install.packages("glue")
 }
 
 # Install necessary libraries
-library(dotenv)
-library(RPostgres)
-library(ini)
 library(tidyverse)
 library(skimr)
-library(glue)
 library(readr)
 library(glue)
 library(dplyr)
 library(tidyverse)
 library(lubridate)
-library(data.table)
 ```
 
 <br>
