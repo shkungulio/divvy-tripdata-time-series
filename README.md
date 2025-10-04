@@ -1,1 +1,1 @@
-# divvy-tripdata-time-series
+# Divvy-Tripdata Time Series Analysis
