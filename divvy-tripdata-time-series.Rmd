@@ -27,13 +27,14 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
 
 
 # Define all required packages
-required_packages <- c("tidyverse", "skimr", "lubridate", "tsibble", "fable", 
-                       "feasts", "fabletools", "prophet", "patchwork", "scales",
-                       "glue")
+required_packages <- c("tidyverse", "skimr", "lubridate", 
+                       "tsibble", "fable", "feasts", "fabletools", 
+                       "prophet", "patchwork", "scales", "glue")
 
 # Install any that are missing
 if (any(!sapply(required_packages, requireNamespace, quietly = TRUE))) {
-  install.packages(required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)])
+  install.packages(required_packages[!sapply(required_packages, 
+                                             requireNamespace, quietly = TRUE)])
 }
 
 # Install necessary libraries
@@ -240,20 +241,6 @@ daily_ts %>%
        y = "Avg duration (min)")
 ```
 
-```{r daily-med-duration}
-# Plot time series for total rides by type
-ggplot(daily_ts, aes(x = ride_date, y = total_rides)) +
-  geom_line(color = "steelblue") +
-  labs(title = "Daily Divvy Trips (2024–Present)",
-       x = "Date", y = "Number of Rides")
-```
-
-```{r daily-ride-counts}
-ggplot(daily_ts, aes(x = ride_date, y = avg_duration)) +
-  geom_line(color = "darkgreen") +
-  labs(title = "Average Ride Duration per Day", x = "Date", y = "Minutes")
-```
-
 <br>
 
 ## Modeling
@@ -313,9 +300,59 @@ results_fable <- fc_tbl %>%
 results_fable
 ```
 
+### Prophet model
+Function to fit Prophet for one member type
+```{r}
+fit_prophet_for_type <- function(df_train, h) {
+  # df_train: tibble with ride_date and total_rides for one member type
+  prophet_df <- df_train %>% select(ds = ride_date, y = total_rides)
+  m <- prophet::prophet(prophet_df, daily.seasonality = FALSE,
+                        weekly.seasonality = TRUE,
+                        yearly.seasonality = TRUE, seasonality.mode = "additive")
+  # future dataframe
+  future <- make_future_dataframe(m, periods = h)
+  forecast <- predict(m, future)
+  # return model & forecast
+  list(model = m, forecast = forecast)
+}
+```
+
+Fit for each member type
+```{r}
+member_types <- unique(train_ts$member_casual)
+prophet_results <- list()
+
+for (mt in member_types) {
+  df_train_mt <- train_ts %>% filter(member_casual == mt) %>% as_tibble()
+  prophet_results[[as.character(mt)]] <- fit_prophet_for_type(df_train_mt, h)
+}
+```
+
+Extract forecasts into a tibble
+```{r}
+prophet_fc_tbl <- map2_dfr(names(prophet_results), prophet_results, ~ {
+  fc <- .y$forecast
+  tibble(
+    member_casual = .x,
+    ride_date = as_date(fc$ds),
+    prophet_mean = fc$yhat
+  )
+})
+```
+
+Join with test set and compute metrics
+```{r}
+prophet_eval <- prophet_fc_tbl %>%
+  filter(ride_date > train_max_date) %>%
+  left_join(test_ts %>% select(ride_date, member_casual, actual = total_rides),
+            by = c("ride_date","member_casual")) %>%
+  group_by(member_casual) %>%
+  summarise(compute_metrics(actual, prophet_mean), .groups = "drop")
+
+prophet_eval
+```
 
 
-Time series forecasting methods such as **ARIMA/SARIMA, Exponential Smoothing (ETS), and Prophet** will be applied to capture trend, seasonality, and holiday effects. Advanced models such as **LSTM/GRU recurrent neural networks** may be explored for capturing non-linear temporal dependencies. Models will be trained and validated using rolling-window or walk-forward validation to mimic real-world forecasting scenarios.
 
 <br>
 
