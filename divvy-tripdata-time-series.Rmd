@@ -1,5 +1,5 @@
 ---
-title: "Divvy Tripdata Time-Series Analysis"
+title: "Divvy Time Series Analysis"
 output:
   html_document:
     theme:
@@ -25,28 +25,29 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 10, fig.height = 6
                       )
 
-#Install the following libraries if required
-if(!requireNamespace("tidyverse", quietly = TRUE)){
-  # If not installed, then install it
-  install.packages("tidyverse")
-}
-if(!requireNamespace("skimr", quietly = TRUE)){
-  # If not installed, then install it
-  install.packages("skimr")
-}
-if(!requireNamespace("glue", quietly = TRUE)){
-  # If not installed, then install it
-  install.packages("glue")
+
+# Define all required packages
+required_packages <- c("tidyverse", "skimr", "lubridate", "tsibble", "fable", 
+                       "feasts", "fabletools", "prophet", "patchwork", "scales",
+                       "glue")
+
+# Install any that are missing
+if (any(!sapply(required_packages, requireNamespace, quietly = TRUE))) {
+  install.packages(required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)])
 }
 
 # Install necessary libraries
 library(tidyverse)
 library(skimr)
-library(readr)
-library(glue)
-library(dplyr)
-library(tidyverse)
 library(lubridate)
+library(tsibble)
+library(fable)       # ARIMA, ETS via fable
+library(feasts)
+library(fabletools)
+library(prophet)     # Prophet (Facebook/Meta Prophet R package)
+library(patchwork)   # for combining ggplots
+library(scales)
+library(glue)
 ```
 
 <br>
@@ -59,26 +60,270 @@ Divvy, Chicago’s bike-sharing service, faces fluctuating demand for rides acro
 Divvy, Chicago’s bike-sharing system, faces dynamic demand patterns that vary by season, day of the week, and rider type. These fluctuations often lead to bike shortages at high-demand stations and surpluses at others, reducing customer satisfaction and increasing operational costs. To address this, Divvy requires accurate forecasts of daily ride demand. Predicting demand trends will enable better resource allocation, efficient bike redistribution, and targeted marketing campaigns, ensuring improved rider experience and sustainable system operations.
 
 ## Data Understanding
+The dataset consists of Divvy trip data from **January 2024 to August 2025**, including ride start/end times, station information, user type (member vs. casual), and trip durations. Since rides are timestamped, the dataset supports the creation of aggregated time series (e.g., daily, weekly, or monthly ride counts). Additional contextual data such as **weather conditions, holidays, and day-of-week effects** can be integrated to better capture external influences on demand.
 
-The dataset consists of Divvy trip data from **January 2024 to the present**, including ride start/end times, station information, user type (member vs. casual), and trip durations. Since rides are timestamped, the dataset supports the creation of aggregated time series (e.g., daily, weekly, or monthly ride counts). Additional contextual data such as **weather conditions, holidays, and day-of-week effects** can be integrated to better capture external influences on demand.
+### Data collection
+
+### Load data
+Load and combine monthly csvs into a single dataframe
+```{r load-data}
+# Define the path to the data directory
+data_dir <- "resources/data/"
+
+# Build a list of all CSV files in the directory
+start_date <- as.Date("2024-01-01")
+end_date <- Sys.Date()
+
+# Generate month sequence
+months_seq <- seq(from = floor_date(start_date, "month"),
+                  to = floor_date(end_date, "month"),
+                  by = "1 month")
+
+# Expected filename format: "202301-divvy-tripdata.csv"
+expected_files <- paste0(format(months_seq, "%Y%m"), "-divvy-tripdata.csv")
+file_paths <- file.path(data_dir, expected_files)
+
+# Keep only files that exist
+file_paths <- file_paths[file.exists(file_paths)]
+if(length(file_paths) == 0) stop("No data files found in data_dir. Update path or filenames.")
+
+# Read and bind — use read_csv to avoid guessing column types repeatedly
+divvy <- file_paths %>%
+  set_names() %>%
+  map_df(~ readr::read_csv(.x, show_col_types = FALSE))
+```
+
+### Quick inspection
+Display the first six rows of the dataset
+```{r data-head}
+divvy %>%
+  head() %>%
+  as_tibble()
+```
+
+Display the structure of the dataset
+```{r data-structure}
+divvy %>% 
+  glimpse()
+```
+
+### Data summary
+Basic statistic summary of each column in the dataset
+```{r data-summary-basic}
+summary(divvy)
+```
+
+Detailed and structured overview of the dataset
+```{r data-summary}
+skim(divvy)
+```
+The dataset provides a thorough view of Divvy bike trips, revealing key patterns and data quality considerations. Ride durations are highly skewed, with most trips under 30 minutes but some extremely long outliers that may require preprocessing. User types show an imbalance, with members dominating over casual riders, while bike usage trends indicate a growing preference for electric bikes. Station data reflects a large network with a few highly popular hubs, though some records have missing station details. The structured overview from skim(divvy) confirms these findings, showing minimal missing values overall but reinforcing the skewed distributions and concentration in certain categories. Together, these insights emphasize the need for preprocessing—such as outlier handling, addressing missing station data, and accounting for class imbalance—to prepare the dataset for reliable time-series and behavioral analyses.
+
+### Data description
+The Divvy-tripdata dataset documents over 9.5 million bike-sharing trips in Chicago between January 2024 and August 2025. Each record represents a single ride and includes 13 variables describing trip timing, locations, bike type, and rider category. Trips are identified by unique IDs, with timestamps marking start and end times, and spatial details provided through both station identifiers and latitude/longitude coordinates. Riders are classified as either members or casual users, enabling comparisons across customer groups. The dataset spans the Chicago metropolitan area, though some records contain missing end-location values. Overall, it offers a comprehensive resource for analyzing temporal trends, spatial patterns, and behavioral differences in bike usage, making it highly suitable for forecasting and urban mobility studies.
+
+### Data dictionary
+
+
+| Column Name        | Description                                | Data Type   |
+|:-------------------|:-------------------------------------------|:------------|
+| ride_id            | Unique identifier for each ride            | Character   |
+| rideable_type      | Type of bike (e.g., classic, electric)     | Character   |
+| started_at         | Timestamp when the ride started            | POSIXct     |
+| ended_at           | Timestamp when the ride ended              | POSIXct     |
+| start_station_id   | Unique identifier for the start station    | Character   |
+| start_station_name | Name of the station where the ride started | Character   |
+| end_station_id     | Unique identifier for the end station      | Character   |
+| end_station_name   | Name of the station where the ride ended   | Character   |
+| start_lat          | Latitude of the start station              | Double      |
+| start_lng          | Longitude of the start station             | Double      |
+| end_lat            | Latitude of the end station                | Double      |
+| end_lng            | Longitude of the end station               | Double      |
+| member_casual      | Type of user (member or casual)            | Character   |
+
+<br>
 
 ## Data Preparation
+### Remove duplicates
+Check for and remove duplicate ride_id entries
+```{r remove-duplicates}
+divvy <- divvy %>%
+  distinct(ride_id, .keep_all = TRUE)
+```
 
-Data will be aggregated into time series at different granularities:
+### Data cleaning
+Data cleaning and feature engineering
+```{r data-cleaning}
+# Standardize timestamp columns and compute ride length (minutes)
+divvy <- divvy %>%
+  mutate(
+    started_at = lubridate::ymd_hms(started_at, tz = "UTC"),
+    ended_at   = lubridate::ymd_hms(ended_at, tz = "UTC"),
+    ride_length_min = as.numeric(difftime(ended_at, started_at, units = "mins")),
+    ride_date = as_date(started_at),
+    dow = wday(started_at, label = TRUE, week_start = 1),
+    hour = hour(started_at)
+  ) %>%
+  # filter out obviously invalid durations
+  filter(!is.na(ride_date) & ride_length_min > 0 & ride_length_min < 24*60)
 
-* **System-wide ride counts per day/week**
-* **Station-level ride counts**
-* **Ride counts segmented by user type (casual vs. member)**
+# Ensure member_casual column exists and standardized
+table(divvy$member_casual, useNA = "ifany")
+divvy <- divvy %>%
+  mutate(member_casual = case_when(
+    tolower(member_casual) %in% c("member","subscriber","member/guest") ~ "member",
+    tolower(member_casual) %in% c("casual","customer","customer?") ~ "casual",
+    TRUE ~ as.character(member_casual)
+  )) %>%
+  mutate(member_casual = as.factor(member_casual))
+```
 
-Missing values, anomalies (e.g., extremely short or long rides), and seasonal events will be identified and handled. Features such as lagged variables, rolling averages, and holiday/weekend indicators will be engineered to strengthen predictive modeling.
+### Aggregates
+Aggregate daily counts & durations for each user type
+```{r data-aggregation}
+daily_by_type <- divvy %>%
+  group_by(ride_date, member_casual) %>%
+  summarise(
+    total_rides = n(),
+    avg_duration = mean(ride_length_min, na.rm = TRUE),
+    med_duration = median(ride_length_min, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(ride_date)
+
+# Make sure every date-member combination exists (fill zeros)
+all_dates <- tibble(ride_date = seq(min(daily_by_type$ride_date), 
+                                    max(daily_by_type$ride_date), 
+                                    by = "day"))
+member_levels <- unique(daily_by_type$member_casual)
+
+daily_by_type <- expand_grid(all_dates, 
+                             member_casual = member_levels) %>%
+  left_join(daily_by_type, by = c("ride_date", "member_casual")) %>%
+  mutate(
+    total_rides = replace_na(total_rides, 0),
+    avg_duration = replace_na(avg_duration, 0),
+    med_duration = replace_na(med_duration, 0)
+  ) %>%
+  arrange(member_casual, ride_date)
+
+head(daily_by_type)
+```
+
+### Visual exploration
+Create time series object
+```{r data-tibble}
+# Convert to tsibble (index = ride_date, key = member_casual)
+daily_ts <- daily_by_type %>%
+  as_tsibble(index = ride_date, key = member_casual)
+```
+
+Plot time series for daily total rides by type
+```{r daily-total-rides}
+# Plot time series for total rides by type
+daily_ts %>%
+  ggplot(aes(x = ride_date, y = total_rides, color = member_casual)) +
+  geom_line() +
+  labs(title = "Daily total rides — member vs casual", 
+       x = "Date", 
+       y = "Total rides")
+```
+
+Plot time series for daily average duration by type
+```{r daily-avg-duration}
+# Plot time series for total rides by type
+daily_ts %>%
+  ggplot(aes(x = ride_date, y = avg_duration, color = member_casual)) +
+  geom_line() +
+  labs(title = "Daily avg duration (min) — member vs casual", 
+       x = "Date", 
+       y = "Avg duration (min)")
+```
+
+```{r daily-med-duration}
+# Plot time series for total rides by type
+ggplot(daily_ts, aes(x = ride_date, y = total_rides)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Daily Divvy Trips (2024–Present)",
+       x = "Date", y = "Number of Rides")
+```
+
+```{r daily-ride-counts}
+ggplot(daily_ts, aes(x = ride_date, y = avg_duration)) +
+  geom_line(color = "darkgreen") +
+  labs(title = "Average Ride Duration per Day", x = "Date", y = "Minutes")
+```
+
+<br>
 
 ## Modeling
 
+### Test-train split
+We use the last 30 days as the holdout. We'll compute MAE, RMSE, and MAPE.
+```{r train-test-split}
+h <- 30  # holdout days
+
+max_date <- max(daily_ts$ride_date)
+train_max_date <- max_date - days(h)
+
+train_ts <- daily_ts %>% filter(ride_date <= train_max_date)
+test_ts  <- daily_ts %>% filter(ride_date > train_max_date)
+
+# helper for metrics
+compute_metrics <- function(actual, forecast) {
+  tibble(
+    MAE  = mean(abs(actual - forecast), na.rm = TRUE),
+    RMSE = sqrt(mean((actual - forecast)^2, na.rm = TRUE)),
+    MAPE = mean(abs((actual - forecast) / pmax(1, actual)), na.rm = TRUE) * 100
+  )
+}
+```
+
+### ARIMA & ETS models
+Fit ARIMA & ETS using fable (per member_casual)
+```{r arima-ets}
+# Fit models on training data
+fits <- train_ts %>%
+  model(
+    ARIMA = ARIMA(total_rides),
+    ETS   = ETS(total_rides)
+  )
+
+# Check fit summaries
+report(fits)
+```
+
+Forecast ARIMA & ETS for 30 days and evaluate
+```{r arima-ets-forecast2}
+fc_fable <- fits %>%
+  forecast(h = h)
+
+# Convert forecasts to a tibble and join with test to compute metrics
+fc_tbl <- fc_fable %>%
+  as_tibble() %>%
+  select(ride_date, member_casual, .model, .mean)
+
+# compare to test
+results_fable <- fc_tbl %>%
+  left_join(test_ts %>% select(ride_date, member_casual, actual = total_rides),
+            by = c("ride_date", "member_casual")) %>%
+  group_by(member_casual, .model) %>%
+  summarise(compute_metrics(actual, .mean), .groups = "drop")
+
+results_fable
+```
+
+
+
 Time series forecasting methods such as **ARIMA/SARIMA, Exponential Smoothing (ETS), and Prophet** will be applied to capture trend, seasonality, and holiday effects. Advanced models such as **LSTM/GRU recurrent neural networks** may be explored for capturing non-linear temporal dependencies. Models will be trained and validated using rolling-window or walk-forward validation to mimic real-world forecasting scenarios.
+
+<br>
 
 ## Evaluation
 
 Models will be evaluated on accuracy metrics including **RMSE (Root Mean Squared Error), MAE (Mean Absolute Error), and MAPE (Mean Absolute Percentage Error)**. Forecast interpretability (e.g., identifying seasonal effects, day-of-week patterns) will also be considered to ensure insights are actionable for Divvy’s operations and marketing teams.
+
+<br>
 
 ## Deployment
 
